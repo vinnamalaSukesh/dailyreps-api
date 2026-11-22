@@ -7,19 +7,18 @@ from app.logic.streaks import best_streak, current_streak
 
 
 async def dsa_done_days(since: str) -> set[str]:
-    """Days where every question in that day's plan has an attempt that day."""
+    """Days with at least one attempt where every planned question was attempted.
+
+    An empty plan (e.g. a weekend with nothing due) still counts if you practised.
+    """
     db = get_db()
     plans = await db.plans.find({"date": {"$gte": since}}).to_list(None)
     attempts = await db.attempts.find({"date": {"$gte": since}}, {"questionId": 1, "date": 1}).to_list(None)
     by_day: dict[str, set[str]] = defaultdict(set)
     for a in attempts:
         by_day[a["date"]].add(a["questionId"])
-    days = set()
-    for p in plans:
-        ids = set(p["newQs"]) | set(p["revisitQs"])
-        if ids and ids <= by_day[p["date"]]:
-            days.add(p["date"])
-    return days
+    planned = {p["date"]: set(p["newQs"]) | set(p["revisitQs"]) for p in plans}
+    return {day for day, done in by_day.items() if planned.get(day, set()) <= done}
 
 
 async def topic_days(since: str) -> set[str]:
