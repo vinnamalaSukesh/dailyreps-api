@@ -52,6 +52,7 @@ async def gather(today: str, days: int = 7) -> dict[str, Any]:
         for t in topics for c in t.get("comments", []) if c["date"] >= since
     ]
     workouts = await stats.workout_days(since)
+    misses = await db.misses.find({"date": {"$gte": since, "$lte": today}}, {"_id": 0, "updatedAt": 0}).to_list(None)
 
     return {
         "period": {"from": since, "to": today},
@@ -64,6 +65,7 @@ async def gather(today: str, days: int = 7) -> dict[str, Any]:
         "completedTopics": [t["title"] for t in topics if t.get("completedAt", "") >= since],
         "topicComments": topic_comments[-20:],
         "workoutDays": len(workouts),
+        "missReasons": sorted(misses, key=lambda m: m["date"]),
         "streaks": await stats.streaks(today),
         "profile": await db.meta.find_one({"_id": "profile"}, {"_id": 0}) or {},
     }
@@ -72,6 +74,9 @@ async def gather(today: str, days: int = 7) -> dict[str, Any]:
 SYSTEM = """You are an interview-prep coach for a software engineer aiming to switch jobs.
 The data has their profile (skills, project highlights, target role/CTC/date), this week's DSA
 stats and comments, and every topic they have already studied (allStudiedTopics).
+missReasons lists days they skipped an objective (dsa/topics/workout) and why. Spot repeated
+causes (e.g. sore every day after leg work, deadlines killing DSA) and address them in
+focusNextWeek; treat planned rest or illness as fine, not as a failure.
 
 suggestedTopics: 3-5 topics to study next, highest priority first. Mix:
  - depth: interview-level internals of tech they already use (they will be grilled on it), and

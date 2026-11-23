@@ -26,9 +26,10 @@ async def today():
         for i in group
         if i in qs
     ]
-    topics = await db.topics.find({"status": "pending"}).sort("createdAt", 1).to_list(None)
+    topics = await db.topics.find({"status": "pending"}).sort([("createdAt", 1), ("order", 1)]).to_list(None)
     workout = await db.workout_logs.find_one({"date": date, "completed": True})
     backlog = await db.questions.count_documents({"lastAttemptAt": None, "mastered": {"$ne": True}})
+    misses = await db.misses.find({"date": date}).to_list(None)
 
     return {
         "date": date,
@@ -37,5 +38,6 @@ async def today():
         "backlogCount": backlog,
         "pendingTopics": [out(t) for t in topics],
         "workoutDone": workout is not None,
+        "misses": {m["objective"]: m["reason"] for m in misses},
         "streaks": await stats.streaks(date),
     }

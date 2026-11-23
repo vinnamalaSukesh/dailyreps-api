@@ -47,6 +47,17 @@ class TopicPatch(BaseModel):
     status: Literal["pending", "completed"] | None = None
 
 
+Objective = Literal["dsa", "topics", "workout"]
+
+
+class MissIn(BaseModel):
+    """Why an objective was missed on a day. One per objective per day; saving again replaces it."""
+
+    objective: Objective
+    reason: str = Field(min_length=1, max_length=200)
+    date: str | None = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")  # default: today
+
+
 class CommentIn(BaseModel):
     text: str = Field(min_length=1)
 

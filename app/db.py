@@ -23,6 +23,7 @@ async def init_indexes() -> None:
     await db.workout_logs.create_index("date", unique=True)
     await db.reports.create_index("weekOf")
     await db.lc_cache.create_index("slug", unique=True)
+    await db.misses.create_index([("date", ASCENDING), ("objective", ASCENDING)], unique=True)
 
 
 async def close() -> None:

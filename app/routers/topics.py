@@ -10,7 +10,7 @@ router = APIRouter(prefix="/topics", tags=["topics"])
 @router.get("")
 async def list_topics():
     # Pending first (they carry over day to day), then most recently completed.
-    ts = await get_db().topics.find({}).sort([("status", -1), ("completedAt", -1), ("createdAt", 1)]).to_list(None)
+    ts = await get_db().topics.find({}).sort([("status", -1), ("completedAt", -1), ("createdAt", 1), ("order", 1)]).to_list(None)
     return [out(t) for t in ts]
 
 

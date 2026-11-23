@@ -9,7 +9,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from app import db
 from app.config import get_settings
 from app.logic.dates import today_key, tz
-from app.routers import misc, questions, today, topics
+from app.routers import misc, misses, questions, today, topics
 from app.services import planner, reports
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -56,5 +56,5 @@ async def health():
     return {"ok": True, "date": today_key()}
 
 
-for r in (today.router, questions.router, topics.router, misc.router):
+for r in (today.router, questions.router, topics.router, misses.router, misc.router):
     app.include_router(r, dependencies=[Depends(require_api_key)])
