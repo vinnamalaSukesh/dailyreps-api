@@ -1,4 +1,7 @@
-"""Daily DSA plan: weekdays 2 new + 1 revisit, weekends 2 revisits.
+"""Daily DSA plan: revisits only (weekdays 1, weekends 2).
+
+New problems come from an external sheet the user works through in order, so the
+app never schedules them; it only logs them when they are solved.
 
 Rules pick the candidates; AI (if configured) chooses among them; anything the
 AI returns that isn't a candidate is ignored and the top-scored one is used.
@@ -18,7 +21,7 @@ log = logging.getLogger(__name__)
 
 def targets(date: str) -> tuple[int, int]:
     """(new, revisit) counts for the day."""
-    return (0, 2) if is_weekend(date) else (2, 1)
+    return (0, 2) if is_weekend(date) else (0, 1)
 
 
 async def _ai_pick(cands: list[dict[str, Any]], need: int, date: str) -> tuple[list[str], str] | None:
@@ -63,7 +66,9 @@ async def ensure_plan(date: str) -> dict[str, Any]:
         "date": date, "newQs": [], "revisitQs": [], "generatedBy": "rules", "aiReason": None,
     }
     new_target, rev_target = targets(date)
-    if len(plan["newQs"]) >= new_target and len(plan["revisitQs"]) >= rev_target and "_id" in plan:
+    trimmed = len(plan["newQs"]) > new_target
+    plan["newQs"] = plan["newQs"][:new_target]  # drop slots from older plans with a higher target
+    if not trimmed and len(plan["newQs"]) >= new_target and len(plan["revisitQs"]) >= rev_target and "_id" in plan:
         return plan
 
     questions = await db.questions.find({"mastered": {"$ne": True}}).sort("createdAt", 1).to_list(None)

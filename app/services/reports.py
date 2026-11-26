@@ -26,14 +26,29 @@ async def gather(today: str, days: int = 7) -> dict[str, Any]:
     qids = {a["questionId"] for a in attempts}
     qs ={str(q["_id"]): q for q in await db.questions.find({"_id": {"$in": [ObjectId(i) for i in qids]}}).to_list(None)}
 
+    # New problems come from an external sheet, so only the app's revisit plan is scored.
+    # Today counts only once its revisits are done, so an unfinished day isn't a miss yet.
     planned = done = 0
     done_by_day: dict[str, set[str]] = defaultdict(set)
     for a in attempts:
         done_by_day[a["date"]].add(a["questionId"])
     for p in plans:
-        ids = set(p["newQs"]) | set(p["revisitQs"])
+        ids = set(p["revisitQs"])
+        hit = ids & done_by_day[p["date"]]
+        if p["date"] == today and hit != ids:
+            continue
         planned += len(ids)
-        done += len(ids & done_by_day[p["date"]])
+        done += len(hit)
+
+    # First-ever attempts in the window = new problems solved from the sheet.
+    first_seen = {
+        r["_id"]: r["first"]
+        for r in await (await db.attempts.aggregate([
+            {"$match": {"questionId": {"$in": list(qids)}}},
+            {"$group": {"_id": "$questionId", "first": {"$min": "$date"}}},
+        ])).to_list(None)
+    }
+    new_solved = sum(1 for d in first_seen.values() if d >= since)
 
     by_pattern: dict[str, dict[str, int]] = defaultdict(lambda: {"attempts": 0, "failed": 0, "hint": 0})
     comments = []
@@ -56,8 +71,13 @@ async def gather(today: str, days: int = 7) -> dict[str, Any]:
 
     return {
         "period": {"from": since, "to": today},
-        "dsaCompletionPct": round(100 * done / planned) if planned else None,
+        "revisitCompletionPct": round(100 * done / planned) if planned else None,
+        "revisitsDone": done,
+        "revisitsPlanned": planned,
+        "newProblemsSolved": new_solved,
+        "distinctProblemsAttempted": len(qids),
         "attempts": len(attempts),
+        "dsaActiveDays": len({a["date"] for a in attempts}),
         "patterns": dict(by_pattern),
         "attemptComments": comments[-30:],
         "pendingTopics": [t["title"] for t in topics if t["status"] == "pending"],
@@ -74,6 +94,12 @@ async def gather(today: str, days: int = 7) -> dict[str, Any]:
 SYSTEM = """You are an interview-prep coach for a software engineer aiming to switch jobs.
 The data has their profile (skills, project highlights, target role/CTC/date), this week's DSA
 stats and comments, and every topic they have already studied (allStudiedTopics).
+New DSA problems come from an external sheet they work through in order (not chosen by the app),
+so judge volume by newProblemsSolved and distinctProblemsAttempted. The app only plans revisits;
+revisitCompletionPct is how many of those planned revisits they did on the day. It is NOT an
+overall completion rate: never call it that, and never lead with it. Lead with volume
+(newProblemsSolved over dsaActiveDays); mention revisits separately, as revisits. The period may
+include days before they started using the app, so don't treat empty early days as missed.
 missReasons lists days they skipped an objective (dsa/topics/workout) and why. Spot repeated
 causes (e.g. sore every day after leg work, deadlines killing DSA) and address them in
 focusNextWeek; treat planned rest or illness as fine, not as a failure.
@@ -97,9 +123,10 @@ def _rules_summary(s: dict[str, Any]) -> dict[str, Any]:
         (p for p, v in s["patterns"].items() if v["attempts"] and (v["failed"] + v["hint"]) / v["attempts"] >= 0.5),
         key=lambda p: -s["patterns"][p]["failed"],
     )
-    pct = s["dsaCompletionPct"]
+    pct = s["revisitCompletionPct"]
     return {
-        "summary": f"DSA plan completion {pct if pct is not None else 0}% over {s['attempts']} attempts; "
+        "summary": f"{s['newProblemsSolved']} new problems solved; revisit completion "
+        f"{pct if pct is not None else 0}% ({s['revisitsDone']}/{s['revisitsPlanned']}); "
         f"{s['workoutDays']} workout days; {len(s['pendingTopics'])} topics pending. (AI unavailable: rules summary.)",
         "weakPatterns": weak,
         "suggestedTopics": [],
@@ -153,6 +180,14 @@ async def generate(today: str, trigger: Literal["weekly", "manual"]) -> dict[str
         "suggestedTopics": _clean_topics(data.get("suggestedTopics")),
         "focusNextWeek": list(data.get("focusNextWeek") or []),
         "suggestedQuestions": await _validate_questions(data.get("suggestedQuestions")),
+        # Plain numbers shown on the report card, so the AI's wording isn't the only source.
+        "numbers": {
+            "newSolved": s["newProblemsSolved"],
+            "activeDays": s["dsaActiveDays"],
+            "revisitsDone": s["revisitsDone"],
+            "revisitsPlanned": s["revisitsPlanned"],
+            "workoutDays": s["workoutDays"],
+        },
         "stats": s,
         "raw": data,
     }

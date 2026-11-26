@@ -1,7 +1,7 @@
 from bson import ObjectId
 
 from app.logic.revisit import apply_result, candidates, fill_with_top, score
-from app.logic.streaks import best_streak, current_streak
+from app.logic.streaks import allowed_excuses, best_streak, current_streak, excuse_left
 
 
 def q(**kw):
@@ -56,3 +56,22 @@ def test_streaks():
     assert current_streak(days + ["2026-11-20"], "2026-11-20") == 4
     assert current_streak(days, "2026-11-21") == 0
     assert best_streak(days + ["2026-11-01"]) == 3
+
+
+def test_excused_day_bridges_but_does_not_count():
+    done = ["2026-11-16", "2026-11-17", "2026-11-19"]  # missed Wed 18th
+    assert current_streak(done, "2026-11-19") == 1
+    assert current_streak(done, "2026-11-19", {"2026-11-18"}) == 3
+    assert best_streak(done, {"2026-11-18"}) == 3
+    # Excused today keeps the streak alive into tomorrow.
+    assert current_streak(done, "2026-11-21", {"2026-11-18", "2026-11-20"}) == 3
+
+
+def test_excuses_capped_per_week_and_done_days_dont_use_them():
+    # Mon 16 .. Sun 22 is one week; Mon 23 starts the next.
+    missed = ["2026-11-17", "2026-11-18", "2026-11-23"]
+    assert allowed_excuses(missed, []) == {"2026-11-17", "2026-11-23"}
+    assert allowed_excuses(missed, ["2026-11-17"]) == {"2026-11-18", "2026-11-23"}
+    assert excuse_left(["2026-11-17"], [], "2026-11-19") is False
+    assert excuse_left([], [], "2026-11-19") is True
+    assert excuse_left(["2026-11-17"], [], "2026-11-23") is True

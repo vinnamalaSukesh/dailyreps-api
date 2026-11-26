@@ -45,6 +45,14 @@ class TopicPatch(BaseModel):
     title: str | None = None
     category: TopicCategory | None = None
     status: Literal["pending", "completed"] | None = None
+    # True tags the topic for spaced revision (first one tomorrow); False stops it.
+    revise: bool | None = None
+
+
+class ReviewIn(BaseModel):
+    """Result of trying to explain a topic from memory."""
+
+    correct: bool
 
 
 Objective = Literal["dsa", "topics", "workout"]
